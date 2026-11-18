@@ -1,0 +1,111 @@
+
+import os
+from telegram import Update
+from telegram.constants import ChatMemberStatus
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    ChatMemberHandler, ContextTypes, filters
+)
+
+TOKEN = os.getenv("BOT_TOKEN")
+
+async def start(update, context):
+    await update.message.reply_text("سلام! من ربات مدیریت ROYAL KING هستم 👑")
+
+async def help_cmd(update, context):
+    await update.message.reply_text(
+        "/rules - قوانین گروه\n"
+        "/warn - اخطار با ریپلای\n"
+        "/ban - مسدود کردن با ریپلای"
+    )
+
+async def rules(update, context):
+    await update.message.reply_text(
+        "📜 قوانین گروه:\n"
+        "۱. احترام به اعضا\n"
+        "۲. تبلیغات ممنوع\n"
+        "۳. ارسال لینک ممنوع\n"
+        "۴. توهین ممنوع"
+    )
+
+async def admin(update, context):
+    member = await context.bot.get_chat_member(
+        update.effective_chat.id,
+        update.effective_user.id
+    )
+    return member.status in (
+        ChatMemberStatus.ADMINISTRATOR,
+        ChatMemberStatus.OWNER
+    )
+
+async def ban(update, context):
+    if not await admin(update, context):
+        return
+    msg = update.effective_message
+    if not msg.reply_to_message:
+        await msg.reply_text("روی پیام کاربر ریپلای کن.")
+        return
+    user = msg.reply_to_message.from_user
+    await context.bot.ban_chat_member(msg.chat_id, user.id)
+    await msg.reply_text("⛔ کاربر مسدود شد.")
+
+async def warn(update, context):
+    if not await admin(update, context):
+        return
+    msg = update.effective_message
+    if not msg.reply_to_message:
+        await msg.reply_text("روی پیام کاربر ریپلای کن.")
+        return
+    await msg.reply_text("⚠️ اخطار داده شد.")
+
+async def welcome(update, context):
+    member = update.chat_member
+    if member and member.new_chat_member.status == ChatMemberStatus.MEMBER:
+        user = member.new_chat_member.user
+        await context.bot.send_message(
+            member.chat.id,
+            f"👑 خوش آمدی {user.first_name} به گروه ROYAL KING!"
+        )
+
+async def moderate(update, context):
+    msg = update.effective_message
+    if not msg or not msg.from_user:
+        return
+    if msg.chat.type not in ("group", "supergroup"):
+        return
+
+    member = await context.bot.get_chat_member(
+        msg.chat_id, msg.from_user.id
+    )
+    if member.status in (
+        ChatMemberStatus.ADMINISTRATOR,
+        ChatMemberStatus.OWNER
+    ):
+        return
+
+    text = msg.text or msg.caption or ""
+    if any(x in text.lower() for x in
+           ["http://", "https://", "t.me/", "www."]):
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+
+def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("rules", rules))
+    app.add_handler(CommandHandler("ban", ban))
+    app.add_handler(CommandHandler("warn", warn))
+    app.add_handler(ChatMemberHandler(
+        welcome, ChatMemberHandler.CHAT_MEMBER
+    ))
+    app.add_handler(MessageHandler(
+        filters.ALL & ~filters.StatusUpdate.ALL, moderate
+    ))
+    print("ROYAL KING BOT is running!")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
